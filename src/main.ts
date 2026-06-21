@@ -8,7 +8,8 @@ import {
   lerp,
   type SignalMatch
 } from './signal';
-import type { Signal, SignalsData, TunerState, WeatherOffset } from './types';
+import { ChallengeSystem } from './challenge';
+import type { Signal, SignalsData, TunerState, WeatherOffset, ChallengeState, ChallengeResult, HintDifficulty } from './types';
 
 class Game {
   private renderer: CRTRenderer | null = null;
@@ -32,6 +33,15 @@ class Game {
   private binaryStream: string = '';
   private binaryTimer: number = 0;
 
+  private challengeSystem: ChallengeSystem | null = null;
+  private challengeState: ChallengeState = {
+    isActive: false,
+    currentTarget: null,
+    results: [],
+    round: 0,
+    totalRounds: 3
+  };
+
   private elements: {
     signalFill: HTMLElement;
     signalOverlay: HTMLElement;
@@ -40,6 +50,20 @@ class Game {
     binaryStream: HTMLElement;
     foundCount: HTMLElement;
     audioToggle: HTMLButtonElement;
+    challengePanel: HTMLElement;
+    challengeToggle: HTMLButtonElement;
+    difficultySelect: HTMLSelectElement;
+    startChallengeBtn: HTMLButtonElement;
+    hintText: HTMLElement;
+    timerText: HTMLElement;
+    roundText: HTMLElement;
+    resultPanel: HTMLElement;
+    resultTime: HTMLElement;
+    resultStrength: HTMLElement;
+    resultDeviation: HTMLElement;
+    resultStatus: HTMLElement;
+    nextRoundBtn: HTMLButtonElement;
+    closeResultBtn: HTMLButtonElement;
   };
 
   constructor() {
@@ -61,7 +85,21 @@ class Game {
       signalDescription: get('signalOverlay').querySelector('.signal-description') as HTMLElement,
       binaryStream: get('signalOverlay').querySelector('.binary-stream') as HTMLElement,
       foundCount: get('foundCount'),
-      audioToggle: get('audioToggle') as HTMLButtonElement
+      audioToggle: get('audioToggle') as HTMLButtonElement,
+      challengePanel: get('challengePanel'),
+      challengeToggle: get('challengeToggle') as HTMLButtonElement,
+      difficultySelect: get('difficultySelect') as HTMLSelectElement,
+      startChallengeBtn: get('startChallengeBtn') as HTMLButtonElement,
+      hintText: get('hintText'),
+      timerText: get('timerText'),
+      roundText: get('roundText'),
+      resultPanel: get('resultPanel'),
+      resultTime: get('resultTime'),
+      resultStrength: get('resultStrength'),
+      resultDeviation: get('resultDeviation'),
+      resultStatus: get('resultStatus'),
+      nextRoundBtn: get('nextRoundBtn') as HTMLButtonElement,
+      closeResultBtn: get('closeResultBtn') as HTMLButtonElement
     };
   }
 
@@ -70,6 +108,8 @@ class Game {
       const signalsData = await this.loadSignals();
       this.signals = signalsData.signals;
       this.weatherSystem = new WeatherSystem(signalsData.weatherConfig);
+      this.challengeSystem = new ChallengeSystem(this.signals);
+      this.setupChallengeEvents();
     } catch (e) {
       console.error('Failed to load signals:', e);
       return;
@@ -136,6 +176,146 @@ class Game {
 
   private updateSignalMatch(): void {
     this.currentMatch = findBestSignalMatch(this.tuner, this.signals, this.weatherOffset);
+    if (this.challengeSystem && this.challengeState.isActive) {
+      this.challengeSystem.updateCurrentMatch(this.currentMatch);
+    }
+  }
+
+  private setupChallengeEvents(): void {
+    this.elements.challengeToggle.addEventListener('click', () => {
+      const isActive = this.elements.challengePanel.classList.toggle('active');
+      this.elements.challengeToggle.classList.toggle('active', isActive);
+      if (!isActive) {
+        this.endChallenge();
+      }
+    });
+
+    this.elements.difficultySelect.addEventListener('change', (e) => {
+      const target = e.target as HTMLSelectElement;
+      this.challengeSystem?.setDifficulty(target.value as HintDifficulty);
+    });
+
+    this.elements.startChallengeBtn.addEventListener('click', () => {
+      this.startChallenge();
+    });
+
+    this.elements.nextRoundBtn.addEventListener('click', () => {
+      this.startNextRound();
+    });
+
+    this.elements.closeResultBtn.addEventListener('click', () => {
+      this.elements.resultPanel.classList.remove('active');
+      if (this.challengeState.round >= this.challengeState.totalRounds) {
+        this.endChallenge();
+      }
+    });
+  }
+
+  private startChallenge(): void {
+    this.challengeState = {
+      isActive: true,
+      currentTarget: null,
+      results: [],
+      round: 0,
+      totalRounds: 3
+    };
+    this.challengeSystem?.reset();
+    this.elements.startChallengeBtn.style.display = 'none';
+    this.startNextRound();
+  }
+
+  private startNextRound(): void {
+    this.elements.resultPanel.classList.remove('active');
+    
+    if (this.challengeState.round >= this.challengeState.totalRounds) {
+      this.showFinalSummary();
+      return;
+    }
+
+    this.challengeState.round++;
+    const target = this.challengeSystem?.pickRandomTarget();
+    if (!target) return;
+
+    this.challengeState.currentTarget = target;
+    this.challengeSystem?.resetMaxStrength();
+
+    this.elements.hintText.textContent = target.hint;
+    this.elements.roundText.textContent = `Round ${this.challengeState.round} / ${this.challengeState.totalRounds}`;
+    this.elements.timerText.classList.remove('warning');
+    this.updateChallengeTimer();
+  }
+
+  private updateChallengeTimer(): void {
+    if (!this.challengeState.isActive || !this.challengeState.currentTarget) return;
+
+    const remaining = this.challengeSystem?.getRemainingTime(this.challengeState.currentTarget) ?? 0;
+    this.elements.timerText.textContent = this.challengeSystem?.formatTime(remaining) ?? '0:00';
+
+    if (remaining <= 10000) {
+      this.elements.timerText.classList.add('warning');
+    }
+
+    if (remaining <= 0) {
+      this.checkChallengeCompletion();
+    }
+  }
+
+  private checkChallengeCompletion(): void {
+    if (!this.challengeState.isActive || !this.challengeState.currentTarget || !this.challengeSystem) return;
+
+    const result = this.challengeSystem.checkCompletion(
+      this.challengeState.currentTarget,
+      this.tuner,
+      this.currentMatch
+    );
+
+    if (result) {
+      this.challengeState.results.push(result);
+      this.showResult(result);
+    }
+  }
+
+  private showResult(result: ChallengeResult): void {
+    this.elements.resultStatus.textContent = result.success ? '✓ CHANNEL LOCKED' : '✗ TIME OUT';
+    this.elements.resultStatus.className = `result-status ${result.success ? 'success' : 'fail'}`;
+    this.elements.resultTime.textContent = `用时: ${this.challengeSystem?.formatTime(result.timeTaken) ?? '0:00'}`;
+    this.elements.resultStrength.textContent = `最高强度: ${(result.maxStrength * 100).toFixed(1)}%`;
+    
+    const devSign = (n: number) => n > 0 ? `+${n}` : n.toString();
+    this.elements.resultDeviation.textContent = `偏差: VHF ${devSign(result.deviation.vhf)} | UHF ${devSign(result.deviation.uhf)} | ANT ${devSign(result.deviation.antenna)}°`;
+
+    if (this.challengeState.round >= this.challengeState.totalRounds) {
+      this.elements.nextRoundBtn.textContent = '查看总结';
+    } else {
+      this.elements.nextRoundBtn.textContent = '下一轮';
+    }
+
+    this.elements.resultPanel.classList.add('active');
+  }
+
+  private showFinalSummary(): void {
+    const successCount = this.challengeState.results.filter(r => r.success).length;
+    const avgTime = this.challengeState.results.reduce((sum, r) => sum + r.timeTaken, 0) / this.challengeState.results.length;
+    const avgStrength = this.challengeState.results.reduce((sum, r) => sum + r.maxStrength, 0) / this.challengeState.results.length;
+
+    this.elements.resultStatus.textContent = `挑战完成! ${successCount}/${this.challengeState.totalRounds} 成功`;
+    this.elements.resultStatus.className = 'result-status success';
+    this.elements.resultTime.textContent = `平均用时: ${this.challengeSystem?.formatTime(avgTime) ?? '0:00'}`;
+    this.elements.resultStrength.textContent = `平均最高强度: ${(avgStrength * 100).toFixed(1)}%`;
+    this.elements.resultDeviation.textContent = '继续努力，成为调台大师!';
+    this.elements.nextRoundBtn.style.display = 'none';
+    this.elements.resultPanel.classList.add('active');
+  }
+
+  private endChallenge(): void {
+    this.challengeState.isActive = false;
+    this.challengeState.currentTarget = null;
+    this.elements.hintText.textContent = '点击开始挑战';
+    this.elements.timerText.textContent = '0:00';
+    this.elements.roundText.textContent = '';
+    this.elements.startChallengeBtn.style.display = 'block';
+    this.elements.nextRoundBtn.style.display = 'block';
+    this.elements.resultPanel.classList.remove('active');
   }
 
   private updateSmoothing(): void {
@@ -194,6 +374,8 @@ class Game {
     }
   }
 
+  private lastChallengeUpdate: number = 0;
+
   private animate(): void {
     if (this.weatherSystem) {
       const weatherResult = this.weatherSystem.update();
@@ -227,6 +409,13 @@ class Game {
       this.audioManager.update();
 
       this.updateUI();
+
+      const now = Date.now();
+      if (this.challengeState.isActive && now - this.lastChallengeUpdate > 100) {
+        this.lastChallengeUpdate = now;
+        this.updateChallengeTimer();
+        this.checkChallengeCompletion();
+      }
     }
 
     requestAnimationFrame(() => this.animate());

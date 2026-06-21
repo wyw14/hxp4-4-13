@@ -49,3 +49,34 @@ export interface KnobState {
   startY: number;
   startValue: number;
 }
+
+export interface ChallengeTarget {
+  signal: Signal;
+  hint: string;
+  startTime: number;
+  timeLimit: number;
+  isCompleted: boolean;
+  isFailed: boolean;
+}
+
+export interface ChallengeResult {
+  signal: Signal;
+  timeTaken: number;
+  maxStrength: number;
+  deviation: {
+    vhf: number;
+    uhf: number;
+    antenna: number;
+  };
+  success: boolean;
+}
+
+export interface ChallengeState {
+  isActive: boolean;
+  currentTarget: ChallengeTarget | null;
+  results: ChallengeResult[];
+  round: number;
+  totalRounds: number;
+}
+
+export type HintDifficulty = 'easy' | 'medium' | 'hard';

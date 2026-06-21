@@ -8,6 +8,49 @@
 </head>
 <body>
   <div id="app">
+    <button class="challenge-toggle" id="challengeToggle">
+      <span class="toggle-icon">⚡</span>
+      <span class="toggle-label">挑战模式</span>
+    </button>
+
+    <div class="challenge-panel" id="challengePanel">
+      <div class="challenge-header">
+        <h3>限时搜台挑战</h3>
+        <div class="challenge-controls">
+          <label>
+            难度:
+            <select id="difficultySelect">
+              <option value="easy">简单 (60s)</option>
+              <option value="medium" selected>中等 (45s)</option>
+              <option value="hard">困难 (30s)</option>
+            </select>
+          </label>
+          <button class="start-btn" id="startChallengeBtn">开始挑战</button>
+        </div>
+      </div>
+
+      <div class="challenge-status">
+        <div class="challenge-round" id="roundText"></div>
+        <div class="challenge-timer" id="timerText">0:00</div>
+      </div>
+
+      <div class="challenge-hint">
+        <div class="hint-label">目标提示</div>
+        <div class="hint-text" id="hintText">点击开始挑战</div>
+      </div>
+
+      <div class="result-panel" id="resultPanel">
+        <div class="result-status" id="resultStatus">✓ CHANNEL LOCKED</div>
+        <div class="result-item" id="resultTime">用时: 0:00</div>
+        <div class="result-item" id="resultStrength">最高强度: 0%</div>
+        <div class="result-item" id="resultDeviation">偏差: VHF 0 | UHF 0 | ANT 0°</div>
+        <div class="result-buttons">
+          <button class="result-btn next" id="nextRoundBtn">下一轮</button>
+          <button class="result-btn close" id="closeResultBtn">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <div class="tv-frame">
       <div class="tv-screen-container">
         <canvas id="glCanvas"></canvas>
