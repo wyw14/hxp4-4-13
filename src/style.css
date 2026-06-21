@@ -512,6 +512,31 @@ html, body {
   text-shadow: 0 0 6px rgba(255, 204, 136, 0.3);
 }
 
+.threshold-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #0a0806;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.threshold-label {
+  color: #6a5a4a;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.threshold-text {
+  color: #44ff88;
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-shadow: 0 0 6px rgba(68, 255, 136, 0.4);
+}
+
 .result-panel {
   position: absolute;
   top: 0;

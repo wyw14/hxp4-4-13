@@ -43,6 +43,14 @@ export interface SignalMatch {
   antennaMatch: number;
 }
 
+export function getMaxReachableStrength(signal: Signal): number {
+  return signal.intensity;
+}
+
+export function calculateCompletionThreshold(signal: Signal, ratio: number = 0.75): number {
+  return getMaxReachableStrength(signal) * ratio;
+}
+
 export function findBestSignalMatch(
   tuner: TunerState,
   signals: Signal[],

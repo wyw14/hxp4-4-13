@@ -57,6 +57,7 @@ class Game {
     hintText: HTMLElement;
     timerText: HTMLElement;
     roundText: HTMLElement;
+    thresholdText: HTMLElement;
     resultPanel: HTMLElement;
     resultTime: HTMLElement;
     resultStrength: HTMLElement;
@@ -93,6 +94,7 @@ class Game {
       hintText: get('hintText'),
       timerText: get('timerText'),
       roundText: get('roundText'),
+      thresholdText: get('thresholdText'),
       resultPanel: get('resultPanel'),
       resultTime: get('resultTime'),
       resultStrength: get('resultStrength'),
@@ -177,6 +179,7 @@ class Game {
   private updateSignalMatch(): void {
     this.currentMatch = findBestSignalMatch(this.tuner, this.signals, this.weatherOffset);
     if (this.challengeSystem && this.challengeState.isActive) {
+      this.challengeSystem.setWeatherOffset(this.weatherOffset);
       this.challengeSystem.updateCurrentMatch(this.currentMatch);
     }
   }
@@ -241,6 +244,11 @@ class Game {
 
     this.elements.hintText.textContent = target.hint;
     this.elements.roundText.textContent = `Round ${this.challengeState.round} / ${this.challengeState.totalRounds}`;
+    
+    const maxReachable = this.challengeSystem?.getMaxReachable(target.signal) ?? 0;
+    const threshold = this.challengeSystem?.getCurrentThreshold(target.signal) ?? 0;
+    this.elements.thresholdText.textContent = `${(threshold * 100).toFixed(0)}% (理论最大: ${(maxReachable * 100).toFixed(0)}%)`;
+    
     this.elements.timerText.classList.remove('warning');
     this.updateChallengeTimer();
   }
@@ -279,7 +287,10 @@ class Game {
     this.elements.resultStatus.textContent = result.success ? '✓ CHANNEL LOCKED' : '✗ TIME OUT';
     this.elements.resultStatus.className = `result-status ${result.success ? 'success' : 'fail'}`;
     this.elements.resultTime.textContent = `用时: ${this.challengeSystem?.formatTime(result.timeTaken) ?? '0:00'}`;
-    this.elements.resultStrength.textContent = `最高强度: ${(result.maxStrength * 100).toFixed(1)}%`;
+    
+    const maxReachable = this.challengeSystem?.getMaxReachable(result.signal) ?? 0;
+    const threshold = this.challengeSystem?.getCurrentThreshold(result.signal) ?? 0;
+    this.elements.resultStrength.textContent = `最高强度: ${(result.maxStrength * 100).toFixed(1)}% (阈值: ${(threshold * 100).toFixed(1)}% / 理论最大: ${(maxReachable * 100).toFixed(1)}%)`;
     
     const devSign = (n: number) => n > 0 ? `+${n}` : n.toString();
     this.elements.resultDeviation.textContent = `偏差: VHF ${devSign(result.deviation.vhf)} | UHF ${devSign(result.deviation.uhf)} | ANT ${devSign(result.deviation.antenna)}°`;
@@ -313,6 +324,7 @@ class Game {
     this.elements.hintText.textContent = '点击开始挑战';
     this.elements.timerText.textContent = '0:00';
     this.elements.roundText.textContent = '';
+    this.elements.thresholdText.textContent = '—';
     this.elements.startChallengeBtn.style.display = 'block';
     this.elements.nextRoundBtn.style.display = 'block';
     this.elements.resultPanel.classList.remove('active');

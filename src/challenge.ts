@@ -1,6 +1,6 @@
-import type { Signal, ChallengeTarget, ChallengeResult, HintDifficulty, TunerState } from './types';
+import type { Signal, ChallengeTarget, ChallengeResult, HintDifficulty, TunerState, WeatherOffset } from './types';
 import type { SignalMatch } from './signal';
-import { centerOfRange } from './signal';
+import { centerOfRange, calculateCompletionThreshold, getMaxReachableStrength } from './signal';
 
 const EASY_HINTS: Record<string, string> = {
   signal_01: '紧急频道 • 低频段 • 偏北方向',
@@ -36,11 +36,18 @@ function getTimeLimit(difficulty: HintDifficulty): number {
     : 30000;
 }
 
+function getDifficultyRatio(difficulty: HintDifficulty): number {
+  return difficulty === 'easy' ? 0.65 
+    : difficulty === 'medium' ? 0.75 
+    : 0.85;
+}
+
 export class ChallengeSystem {
   private signals: Signal[];
   private usedSignals: Set<string> = new Set();
   private difficulty: HintDifficulty = 'medium';
   private currentMaxStrength: number = 0;
+  private weatherOffset: WeatherOffset = { vhfShift: 0, uhfShift: 0, antennaShift: 0 };
   private onCompleteCallback: ((result: ChallengeResult) => void) | null = null;
   private onFailCallback: (() => void) | null = null;
 
@@ -50,6 +57,10 @@ export class ChallengeSystem {
 
   setDifficulty(difficulty: HintDifficulty): void {
     this.difficulty = difficulty;
+  }
+
+  setWeatherOffset(offset: WeatherOffset): void {
+    this.weatherOffset = offset;
   }
 
   setOnComplete(callback: (result: ChallengeResult) => void): void {
@@ -91,6 +102,34 @@ export class ChallengeSystem {
     return Math.max(0, target.timeLimit - (Date.now() - target.startTime));
   }
 
+  getCurrentThreshold(signal: Signal): number {
+    const ratio = getDifficultyRatio(this.difficulty);
+    return calculateCompletionThreshold(signal, ratio);
+  }
+
+  getEffectiveRanges(signal: Signal): { vhfRange: [number, number]; uhfRange: [number, number]; antennaAngle: [number, number] } {
+    let effectiveVhfRange = [...signal.vhfRange] as [number, number];
+    let effectiveUhfRange = [...signal.uhfRange] as [number, number];
+    let effectiveAntennaRange = [...signal.antennaAngle] as [number, number];
+
+    if (signal.weatherAffected) {
+      effectiveVhfRange = [
+        effectiveVhfRange[0] + this.weatherOffset.vhfShift,
+        effectiveVhfRange[1] + this.weatherOffset.vhfShift
+      ];
+      effectiveUhfRange = [
+        effectiveUhfRange[0] + this.weatherOffset.uhfShift,
+        effectiveUhfRange[1] + this.weatherOffset.uhfShift
+      ];
+      effectiveAntennaRange = [
+        effectiveAntennaRange[0] + this.weatherOffset.antennaShift,
+        effectiveAntennaRange[1] + this.weatherOffset.antennaShift
+      ];
+    }
+
+    return { vhfRange: effectiveVhfRange, uhfRange: effectiveUhfRange, antennaAngle: effectiveAntennaRange };
+  }
+
   checkCompletion(target: ChallengeTarget, tuner: TunerState, match: SignalMatch): ChallengeResult | null {
     if (target.isCompleted || target.isFailed) return null;
 
@@ -103,7 +142,8 @@ export class ChallengeSystem {
       return result;
     }
 
-    if (match.signal?.id === target.signal.id && match.strength >= 0.7) {
+    const threshold = this.getCurrentThreshold(target.signal);
+    if (match.signal?.id === target.signal.id && match.strength >= threshold) {
       target.isCompleted = true;
       const result = this.buildResult(target, tuner, true);
       this.onCompleteCallback?.(result);
@@ -116,10 +156,11 @@ export class ChallengeSystem {
   private buildResult(target: ChallengeTarget, tuner: TunerState, success: boolean): ChallengeResult {
     const signal = target.signal;
     const timeTaken = Date.now() - target.startTime;
+    const effectiveRanges = this.getEffectiveRanges(signal);
     
-    const targetVhf = centerOfRange(signal.vhfRange as [number, number]);
-    const targetUhf = centerOfRange(signal.uhfRange as [number, number]);
-    const targetAntenna = centerOfRange(signal.antennaAngle as [number, number]);
+    const targetVhf = centerOfRange(effectiveRanges.vhfRange);
+    const targetUhf = centerOfRange(effectiveRanges.uhfRange);
+    const targetAntenna = centerOfRange(effectiveRanges.antennaAngle);
 
     return {
       signal,
@@ -148,5 +189,9 @@ export class ChallengeSystem {
   reset(): void {
     this.usedSignals.clear();
     this.currentMaxStrength = 0;
+  }
+
+  getMaxReachable(signal: Signal): number {
+    return getMaxReachableStrength(signal);
   }
 }
